@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#007bff">
+    <link rel="manifest" href="manifest.json">
+    <title>Coiffeur Pro - File d'attente</title>
+    <style>
+        body { font-family: 'Segoe UI', Roboto, sans-serif; background: #f0f2f5; margin: 0; padding: 15px; }
+        .header { background: #007bff; color: white; padding: 15px; border-radius: 0 0 15px 15px; margin: -15px -15px 20px -15px; text-align: center; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        .card { background: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        .input-group { display: flex; gap: 10px; }
+        input { flex: 1; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; }
+        button { border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+        .btn-add { background: #28a745; color: white; padding: 0 20px; }
+        .client-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; background: white; margin-bottom: 10px; border-radius: 10px; border-left: 5px solid #007bff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .client-info { flex: 1; }
+        .client-number { font-size: 18px; font-weight: bold; color: #333; }
+        .client-rank { color: #666; font-size: 14px; }
+        .actions { display: flex; gap: 8px; }
+        .btn-done { background: #007bff; color: white; padding: 10px; }
+        .btn-delay { background: #ffc107; color: #000; padding: 10px; }
+        .btn-cancel { background: #dc3545; color: white; padding: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Mon Salon</h1>
+    </div>
+
+    <div class="card">
+        <div class="input-group">
+            <input type="tel" id="phone" placeholder="Numéro du client...">
+            <button class="btn-add" onclick="ajouter()">Ajouter</button>
+        </div>
+    </div>
+
+    <div id="liste"></div>
+
+    <script>
+        let clients = JSON.parse(localStorage.getItem('clients')) || [];
+
+        function ajouter() {
+            const phoneInput = document.getElementById('phone');
+            if(!phoneInput.value) return;
+            clients.push({ phone: phoneInput.value });
+            phoneInput.value = '';
+            saveAndRender();
+        }
+
+        function terminer(index) {
+            const clientTermine = clients[index];
+            clients.splice(index, 1);
+            
+            // Logique de rappel : On prévient le client qui est maintenant au rang 2
+            // Cela correspond souvent à celui qui passera dans 15-20 min
+            if (clients.length >= 2) {
+                prevenirClient(clients[1].phone); // Le nouveau n°2
+            }
+            saveAndRender();
+        }
+
+        function prevenirClient(numero) {
+            const message = encodeURIComponent("Bonjour, c'est votre coiffeur. Votre tour est dans environ 15 minutes. Merci de vous présenter.");
+            // Ouvre l'application SMS du téléphone avec le message prêt
+            window.open(`sms:${numero}?body=${message}`);
+        }
+
+        function envoyerALaFin(index) {
+            const client = clients.splice(index, 1)[0];
+            clients.push(client);
+            saveAndRender();
+        }
+
+        function annuler(index) {
+            if(confirm("Supprimer ce client ?")) {
+                clients.splice(index, 1);
+                saveAndRender();
+            }
+        }
+
+        function saveAndRender() {
+            localStorage.setItem('clients', JSON.stringify(clients));
+            const container = document.getElementById('liste');
+            container.innerHTML = clients.map((c, i) => `
+                <div class="client-item">
+                    <div class="client-info">
+                        <div class="client-rank">Rang #${i+1}</div>
+                        <div class="client-number">${c.phone}</div>
+                    </div>
+                    <div class="actions">
+                        <button class="btn-done" onclick="terminer(${i})">Fini</button>
+                        <button class="btn-delay" onclick="envoyerALaFin(${i})">Retard</button>
+                        <button class="btn-cancel" onclick="annuler(${i})">X</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        // Enregistrement du Service Worker pour la PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+
+        saveAndRender();
+    </script>
+</body>
+</html>
