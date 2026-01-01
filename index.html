@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#007bff">
+    <link rel="manifest" href="manifest.json">
+    <title>Organisateur de rendez-vous</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #f4f7f6; margin: 0; padding: 15px; }
+        .header { background: #007bff; color: white; padding: 20px; border-radius: 0 0 20px 20px; margin: -15px -15px 20px -15px; text-align: center; }
+        .card { background: white; padding: 20px; border-radius: 15px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .input-group { display: flex; flex-direction: column; gap: 12px; }
+        input { padding: 14px; border: 1px solid #ddd; border-radius: 10px; font-size: 16px; outline: none; }
+        button { border: none; border-radius: 10px; font-weight: bold; cursor: pointer; padding: 14px; font-size: 14px; }
+        .btn-add { background: #28a745; color: white; width: 100%; font-size: 16px; }
+        .client-item { display: flex; justify-content: space-between; align-items: center; padding: 15px; background: white; margin-bottom: 12px; border-radius: 12px; border-left: 6px solid #007bff; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .client-info { flex: 1; }
+        .client-name { font-size: 18px; font-weight: bold; color: #2c3e50; }
+        .client-time { color: #007bff; font-weight: bold; margin-top: 4px; }
+        .client-phone { color: #7f8c8d; font-size: 13px; }
+        .actions { display: flex; gap: 6px; }
+        .btn-done { background: #007bff; color: white; }
+        .btn-delay { background: #ffc107; color: #212529; }
+        .btn-cancel { background: #e74c3c; color: white; }
+        .setup-section { background: #fff3cd; padding: 15px; border-radius: 10px; border: 1px solid #ffeeba; margin-bottom: 20px; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <h1>Organisateur de RDV</h1>
+    </div>
+
+    <div id="setup-container" class="setup-section" style="display:none;">
+        <strong>Démarrage de la journée</strong><br>
+        Heure du 1er RDV : <input type="time" id="startTime" onchange="initialiserHeure()">
+    </div>
+
+    <div class="card">
+        <div class="input-group">
+            <input type="text" id="name" placeholder="Nom du client">
+            <input type="tel" id="phone" placeholder="Numéro de téléphone">
+            <button class="btn-add" onclick="ajouterClient()">➕ Ajouter le client</button>
+        </div>
+    </div>
+
+    <div id="liste"></div>
+
+    <script>
+        let clients = JSON.parse(localStorage.getItem('clients')) || [];
+        let baseTime = localStorage.getItem('baseTime') || "";
+        const DUREE_COUPE = 30; // 30 minutes demandées
+
+        function initialiserHeure() {
+            baseTime = document.getElementById('startTime').value;
+            localStorage.setItem('baseTime', baseTime);
+            render();
+        }
+
+        function calculerHeure(index) {
+            if (!baseTime) return "--:--";
+            let [h, m] = baseTime.split(':').map(Number);
+            let totalMin = h * 60 + m + (index * DUREE_COUPE);
+            let finalH = Math.floor(totalMin / 60) % 24;
+            let finalM = totalMin % 60;
+            return `${finalH.toString().padStart(2, '0')}:${finalM.toString().padStart(2, '0')}`;
+        }
+
+        function envoyerSMS(numero, message) {
+            const url = `sms:${numero}?body=${encodeURIComponent(message)}`;
+            window.open(url);
+        }
+
+        function ajouterClient() {
+            const nom = document.getElementById('name').value;
+            const tel = document.getElementById('phone').value;
+
+            if (!nom || !tel) { alert("Remplissez le nom et le numéro !"); return; }
+            if (clients.length === 0 && !baseTime) { alert("Fixez l'heure de début d'abord."); return; }
+
+            const heureRdv = calculerHeure(clients.length);
+            const nouveau = { name: nom, phone: tel, heureInitiale: heureRdv };
+            clients.push(nouveau);
+
+            // 1. Message Initial (Confirmation)
+            envoyerSMS(tel, `Bonjour ${nom}, votre RDV est confirmé pour environ ${heureRdv}.`);
+
+            document.getElementById('name').value = '';
+            document.getElementById('phone').value = '';
+            saveAndRender();
+        }
+
+        function terminer(index) {
+            clients.splice(index, 1);
+            
+            // 2. Message de rappel quand le rang diminue jusqu'à 2
+            // On vérifie si quelqu'un occupe maintenant la place n°2 (index 1)
+            if (clients.length >= 2) {
+                const clientARappeler = clients[1]; // Celui qui est 2ème
+                envoyerSMS(clientARappeler.phone, `Bonjour ${clientARappeler.name}, rappel : votre rendez-vous est dans environ 20 minutes.`);
+            }
+
+            if (clients.length === 0) {
+                baseTime = "";
+                localStorage.removeItem('baseTime');
+            }
+            saveAndRender();
+        }
+
+        function retarder(index) {
+            if (index + 1 < clients.length) {
+                let temp = clients[index];
+                clients[index] = clients[index + 1];
+                clients[index + 1] = temp;
+                saveAndRender();
+            }
+        }
+
+        function annuler(index) {
+            if (confirm("Annuler ce rendez-vous ?")) {
+                clients.splice(index, 1);
+                if (clients.length === 0) {
+                    baseTime = "";
+                    localStorage.removeItem('baseTime');
+                }
+                saveAndRender();
+            }
+        }
+
+        function saveAndRender() {
+            localStorage.setItem('clients', JSON.stringify(clients));
+            document.getElementById('setup-container').style.display = (clients.length === 0) ? 'block' : 'none';
+            
+            const container = document.getElementById('liste');
+            container.innerHTML = clients.map((c, i) => `
+                <div class="client-item">
+                    <div class="client-info">
+                        <div class="client-name">${c.name}</div>
+                        <div class="client-phone">${c.phone}</div>
+                        <div class="client-time">Heure prévue : ${calculerHeure(i)}</div>
+                    </div>
+                    <div class="actions">
+                        <button class="btn-done" onclick="terminer(${i})">Fini</button>
+                        <button class="btn-delay" onclick="retarder(${i})">⏳</button>
+                        <button class="btn-cancel" onclick="annuler(${i})">X</button>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+        saveAndRender();
+    </script>
+</body>
+</html>
